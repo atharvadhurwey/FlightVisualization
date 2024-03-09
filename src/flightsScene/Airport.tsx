@@ -1,39 +1,72 @@
-import React, { useRef, useState } from 'react'
-import { Box, rotationQuaternionForCoordinates } from '../Utilities'
-import { IAirport } from '../types'
-import { Group } from 'three'
-import { EARTH_SURFACE_HEIGHT } from '../constants'
-import { Html } from '@react-three/drei'
+import React, { useRef, useState } from 'react';
+import { Group, PointLight } from 'three';
+import { Html } from '@react-three/drei';
 
-const Airport = ({ airport }: { airport: IAirport }) => {
-    const rotationBoxRef = useRef<Group | null>(null)
-    const [isHovered, setIsHovered] = useState(false)
+import { GLOBE_SCALE } from '../constants';
+import { GLOBE_BASE_RADIUS } from '../models/Globe';
+import { Box, rotationQuaternionForCoordinates } from '../Utilities';
 
-    if (rotationBoxRef.current) {
-        const q = rotationQuaternionForCoordinates(airport.latitude, airport.longitude)
-        rotationBoxRef.current?.setRotationFromQuaternion(q);
-    }
+import { IAirport, Number3 } from '../types';
+import { useFrame } from '@react-three/fiber';
+
+const EARTH_SURFACE_ELEVATION = GLOBE_BASE_RADIUS * GLOBE_SCALE;
+
+const LIGHT_POSITION: Number3 = [0, EARTH_SURFACE_ELEVATION + 0.04, 0];
+const CITY_POSTION: Number3 = [0, EARTH_SURFACE_ELEVATION, 0];
+
+export default function Airport(props: { airport: IAirport }) {
+    const rotationBoxRef = useRef<Group | null>(null);
+    const lightRef = useRef<PointLight | null>(null);
+    const [hover, setHover] = useState<boolean>(false);
+    const [r] = useState(Math.random());
+
+    const rotationQuaternion = rotationQuaternionForCoordinates(props.airport.latitude, props.airport.longitude);
+
+    useFrame((state, delta) => {
+        if (lightRef.current) {
+            const blinkPeriod = 3 + r;
+            const phase = (state.clock.elapsedTime % blinkPeriod) / blinkPeriod;
+            if (hover) {
+                lightRef.current.intensity = 3;
+            } else {
+                lightRef.current.intensity = Math.sin(phase * Math.PI * 2) * 0.5 + 0.5;
+            }
+        }
+    });
 
     return (
-        <group ref={rotationBoxRef}>
-            <group position={[0, EARTH_SURFACE_HEIGHT, 0]}>
-                <Box
-                    onPointerOver={() => setIsHovered(true)}
-                    onPointerOut={() => setIsHovered(false)}
-                    size={[0.1, 0.1, 0.1]}
-                    color={isHovered ? "blue" : "hotpink"}
-                />
-                {
-                    isHovered && <pointLight position-y={0.1} intensity={2} color={"blue"} />
-                }
-                {
-                    isHovered && <Html>
-                        <div className={'info-bubble'}>{airport.city}</div>
-                    </Html>
-                }
-            </group>
+        <group ref={rotationBoxRef} quaternion={rotationQuaternion}>
+            {hover ? (
+                <Html position-y={EARTH_SURFACE_ELEVATION}>
+                    <div className="info-bubble" onPointerOver={() => setHover(true)} onPointerOut={() => setHover(false)}>
+                        <div>[{props.airport.city}]</div>
+                        <div>{props.airport.id} </div>
+                        <div>
+                            ({props.airport.latitude};{props.airport.longitude})
+                        </div>
+                    </div>
+                </Html>
+            ) : null}
+            <Box
+                onPointerOver={() => setHover(true)}
+                onPointerOut={() => setHover(false)}
+                size={[0.05, 0.05, 0.05]}
+                color={hover ? 'limegreen' : 'red'}
+                position={CITY_POSTION}
+            />
+            <Sphere position={LIGHT_POSITION} baseColor={hover ? 'limegreen' : 'red'} />
+            <pointLight ref={lightRef} color={hover ? 'limegreen' : 'red'} position={LIGHT_POSITION} />
         </group>
-    )
+    );
 }
 
-export default Airport
+function Sphere(
+    props: React.PropsWithChildren<{ position: [x: number, y: number, z: number]; baseColor: string; reference?: any }>
+) {
+    return (
+        <mesh {...props} ref={props.reference}>
+            <sphereGeometry args={[0.01]} />
+            <meshStandardMaterial color={props.baseColor} />
+        </mesh>
+    );
+}

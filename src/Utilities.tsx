@@ -35,7 +35,6 @@ export function Sphere(props: { position?: [x: number, y: number, z: number]; co
   return (
     <mesh {...props} ref={props.reference}>
       <sphereGeometry args={[0.1]} />
-      <meshStandardMaterial color={props.color} />
       <meshStandardMaterial color={props.color} {...emissiveProps} />
     </mesh>
   );

@@ -1,9 +1,10 @@
 import { useRef } from 'react';
 import { Group, Quaternion, Vector3 } from 'three';
 import { ThreeEvent, useFrame } from '@react-three/fiber';
+import { Html } from '@react-three/drei';
 
 import Airplane from '../models/Plane';
-import { FLOAT_HEIGHT, GLOBE_SCALE, LEFT } from '../constants';
+import { FLOAT_HEIGHT, GLOBE_SCALE } from '../constants';
 import { GLOBE_BASE_RADIUS } from '../models/Globe';
 
 import { IAirport, IFlight } from '../types';
@@ -12,59 +13,56 @@ import { getRotationForDirection, rotationQuaternionForCoordinates } from '../Ut
 type FlightProperties = {
   from: IAirport;
   to: IAirport;
-  flightDescriptor: IFlight;
+  flight: IFlight;
   onFlightClicked: (flight: IFlight, event: ThreeEvent<MouseEvent>) => void;
   selected: boolean;
 };
 
-export function Flight({ from, to }: { from: IAirport, to: IAirport }) {
+export function Flight({ from, to, flight, selected, onFlightClicked }: FlightProperties) {
   const rotationBoxRef = useRef<Group | null>(null);
   const flightContainerRef = useRef<Group | null>(null);
 
-  const fromQuaternion = rotationQuaternionForCoordinates(from.latitude, from.longitude);
-  const toQuaternion = rotationQuaternionForCoordinates(to.latitude, to.longitude);
-
   useFrame((state, delta) => {
+    const globalWorldTime: number = (state.clock as any).hackedWorldTime;
+    const startQuaternion = rotationQuaternionForCoordinates(from.latitude, from.longitude);
+    const endQuaternion = rotationQuaternionForCoordinates(to.latitude, to.longitude);
 
-    const phase = state.clock.elapsedTime % 5 / 5;
+    if (rotationBoxRef.current && flightContainerRef.current) {
+      const phase = calculatePhase(Number(flight.departureTime), Number(flight.arrivalTime), globalWorldTime);
+      const worldPositionBefore = flightContainerRef.current.getWorldPosition(new Vector3());
 
-    if (flightContainerRef.current && rotationBoxRef.current) {
-      const q = new Quaternion();
-      q.slerpQuaternions(fromQuaternion, toQuaternion, phase);
-
-      const worldPositionBefore = new Vector3();
-      flightContainerRef.current.getWorldPosition(worldPositionBefore);
-
-      rotationBoxRef.current.setRotationFromQuaternion(q);
+      const rotationQuaternion = new Quaternion();
+      rotationQuaternion.slerpQuaternions(startQuaternion, endQuaternion, phase);
+      rotationBoxRef.current.setRotationFromQuaternion(rotationQuaternion);
 
       flightContainerRef.current.lookAt(worldPositionBefore);
-      flightContainerRef.current.rotation.z = getRotationForDirection(from, to);
-
+      // .lookAt only sets x/y rotation, it screws up Z, but we can reset it
+      flightContainerRef.current.rotation.z = getRotationForDirection(from, to)!;
     }
-
-    // const startQuaternion = new Quaternion().setFromAxisAngle(LEFT, 0);
-    // const midQuaternion = new Quaternion().setFromAxisAngle(LEFT, Math.PI);
-    // const endQuaternion = new Quaternion().setFromAxisAngle(LEFT, Math.PI * 2);
-    // if (rotationBoxRef.current) {
-    //   const phase = (state.clock.elapsedTime % 3) / 3;
-
-    //   const rotationQuaternion = new Quaternion();
-    //   if (phase < 0.5) {
-    //     rotationQuaternion.slerpQuaternions(startQuaternion, midQuaternion, phase * 2);
-    //   } else {
-    //     rotationQuaternion.slerpQuaternions(midQuaternion, endQuaternion, (phase - 0.5) * 2);
-    //   }
-
-    //   rotationBoxRef.current.setRotationFromQuaternion(rotationQuaternion);
-    // }
   });
 
   return (
     <group ref={rotationBoxRef}>
       <group ref={flightContainerRef} position-y={GLOBE_BASE_RADIUS * GLOBE_SCALE + FLOAT_HEIGHT}>
         {/* ^ This box is a convenience because it's hard to forward ref to inside the airplane */}
-        <Airplane />
+        {selected && <Html><div className={'info-bubble'}>{flight.id}</div></Html>}
+        <Airplane selected={selected} onClick={(event) => onFlightClicked(flight, event)} />
       </group>
     </group>
   );
+}
+
+function calculatePhase(
+  startTimestamp: number,
+  endTimestamp: number,
+  currentTimestamp: number,
+  shouldLimit: boolean = true
+) {
+  const fullRange = endTimestamp - startTimestamp;
+  const currentProgress = currentTimestamp - startTimestamp;
+  if (shouldLimit) {
+    return Math.min(1, Math.max(0, currentProgress / fullRange));
+  } else {
+    return currentProgress / fullRange;
+  }
 }
